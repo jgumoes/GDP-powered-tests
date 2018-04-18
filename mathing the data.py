@@ -33,6 +33,7 @@ def do_all(folder_list):
     for i in folder_list:
         open_dir(i)
     out_file.close()
+    out_file = None
 
 #@jit
 def open_dir(path, us=True):
@@ -68,9 +69,9 @@ def open_dir(path, us=True):
         for i in path.split("\\")[-2].split(", "):
             line += i[:-1] + ", "
         line += str(w)+", "
-        line+="Periods: "+np.array2string(p_stats).replace('\n', '')+", "
-        line+="On_times: "+np.array2string(t_on_stats).replace('\n', '')+", "
-        line+="Off_times: "+np.array2string(t_off_stats).replace('\n', '')+"\n"
+        line+="Periods:, "+np.array2string(p_stats, separator=",").replace('\n', '')[1:-1]+", "
+        line+="On_times:, "+np.array2string(t_on_stats, separator=",").replace('\n', '')[1:-1]+", "
+        line+="Off_times:, "+np.array2string(t_off_stats, separator=",").replace('\n', '')[1:-1]+"\n"
         out_file.write(line)
 
 #@jit
