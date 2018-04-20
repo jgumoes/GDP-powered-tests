@@ -38,7 +38,7 @@ def do_all(folder_list):
 #@jit
 def open_dir(path, us=True):
     """process all the data files in a directory"""
-    files = os.listdir(path)
+    files = sorted(os.listdir(path))
     if path.split("\\")[-1] == "":
         pass
     else:
@@ -46,14 +46,18 @@ def open_dir(path, us=True):
     periods = np.array([])
     t_on = np.array([])
     t_off = np.array([])
-    w = 0
+    ws = np.array([])
     for i in files:
         data = open_file(path+i, us=us)
         out = level_shift(data, plot=False)
         periods = np.append(periods, out[0])
         t_on = np.append(t_on, out[1])
         t_off = np.append(t_off, out[2])
-        w += out[3]
+        if (len(ws) != 0):
+            if (np.abs((out[3]/np.average(ws))-1)<=1):
+                ws = np.append(ws, out[3])
+        else:
+            ws = np.append(ws, out[3])
         #print(periods, t_on, t_off)
     print(path.split("\\")[-2])
     p_stats = stats(periods)
@@ -62,7 +66,7 @@ def open_dir(path, us=True):
     print("On times:\t", t_on_stats)
     t_off_stats = stats(t_off)
     print("Off times:\t", t_off_stats)
-    w *= (1/len(files))
+    w = np.average(ws)
     print("Angular Velocity:\t", w)
     if out_file is not None:
         line = ""
@@ -144,7 +148,11 @@ def level_shift(data, threshold=10000, plot=False, us=None):
     mags = np.abs(np.fft.rfft(val))
     #plt.semilogx(freqs, mags)
     #plt.plot(freqs[1:], mags[1:])
-    w = 2*np.pi*freqs[1+np.argmax(mags[1:]*(freqs[1:len(mags)]<threshold))] # angular velocity of the wheel
+    #w = 2*np.pi*freqs[1+np.argmax(mags[1:]*(freqs[1:len(mags)]<threshold))] # angular velocity of the wheel
+    f_w = freqs[np.nonzero((freqs<(threshold)))][1:]
+    m_w = mags[np.nonzero((freqs<(threshold)))][1:]
+    w = f_w[np.argmax(m_w)]*2*np.pi
+    #w = np.argmax((freqs<(threshold))*mags)[1:])
     #pwm = freqs[1+np.argmax(mags[1:]*(freqs[1:]>threshold))]
     cutoff = 3*np.round(w)*2/1000000
     b, a = signal.butter(1, cutoff, btype="low")
