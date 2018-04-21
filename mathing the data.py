@@ -78,7 +78,7 @@ def open_dir(path, us=True):
         line+="Off_times:, "+np.array2string(t_off_stats, separator=",").replace('\n', '')[1:-1]+"\n"
         out_file.write(line)
 
-#@jit
+@jit
 def open_file(path, us=True):
     #try:
     #    path
@@ -117,7 +117,7 @@ def find_diff(res):
     k1 = res[:-1]
     return res[1:]-k1
 
-#@jit
+@jit
 def level_shift(data, threshold=10000, plot=False, us=None):
     """finds the pwm frequency and duty cycle. This one works by subtracting
     a low-pass filtered set of results from the results, so that the on states
@@ -163,7 +163,9 @@ def level_shift(data, threshold=10000, plot=False, us=None):
         plt.plot(time[:50000], res[:50000])
         plt.plot(time[:50000], val[:50000])
     time=time[:-1]*res          # keep only the times that have an edge
-    time=time[np.nonzero(time)] # get rid of the elements that are 0
+    args = np.nonzero(time)
+    if len(args[0]) != 0:
+        time=time[args] # get rid of the elements that are 0
     #plot_time = np.trim_zeros(time*(np.abs(time)<(50/1000)))
     #plt.scatter(np.abs(plot_time), np.ones(len(plot_time))*30)
     #plt.plot(time)
@@ -206,6 +208,65 @@ def stats(values):
         out+=values*((values >=h[1][i]) & (values <= h[1][i+1]))
     out = out[np.nonzero(out)]
     return np.append(np.percentile(out, [0, 25, 50, 75, 100]), np.std(out)/np.sqrt(len(out)))
+
+# =============================================================================
+# def down_sample(data, max_p=500000, times=False):
+#     """Plots the data, but down-sampled to avoid crashing pyplot"""
+#     pos, values = data    
+#     d = 1
+#     while len(values)/d > max_p:
+#         d+=1
+#     #values = values[d*int(len(values)/d)]
+#     length = d*int(len(values)/d)
+#     if times is False:
+#         pos = np.linspace(0, length)[:-1]
+#     else:
+#         pos = np.average(pos.reshape((length/d, d)))
+#     values = np.average(values.reshape((length/d, d)))
+#     plt.plot(pos, values)
+# =============================================================================
+
+def dec_plot(data, start=0, end=None, p=500000, use_times=False):
+    """decimates and plots the data between start and end, limited to p data points"""
+    if np.shape(data)[0]!=2:
+        if np.shape(data)[-1] == 2:
+            data = np.transpose(data)
+        else:
+            return "data has wrong shape:\t" + str(np.shape(data))
+    times, values = data
+    if end is None:
+        length = len(values[start:])
+    else:
+        #values = values[start, end]
+        length = end-start
+    pos = np.linspace(start, start+length, length+1, dtype=int)
+    d = 1
+    while len(pos)/d > p:
+        d+=1
+    trim = len(pos)%d
+    if trim != 0:
+        pos = pos[:-trim]
+    print(d, trim, len(pos))
+    pos = pos.reshape((int(len(pos)/d), d))[:, 0]
+    #values = values.reshape((int(len(values/d), )))
+    if use_times is True:
+        pos = times[pos]
+    plt.plot(pos, values[pos])
+
+@jit
+def moving_level_shift(data, w_length=10000, threshold=10000, plot=False, us=None):
+    """does the level_shift on a limited window that moves"""
+    w_out = np.zeros(len(np.transpose(data)[1])-w_length)
+    t_out = np.zeros(len(w_out))
+    c = 0
+    while c < len(w_out):
+        w_out[c] = level_shift(data[c:c+w_length, :], threshold=threshold, plot=False, us=us)[-1]
+        t_out[c] = np.average(data[c:c+w_length, 0])
+        print(c)
+        c+=1
+    if plot is True:
+        plt.plot(t_out, w_out)
+    return t_out, w_out
 
 #@jit
 def test_filt(fc=30000, D=0.8, res=10, N=10, f=15000):
