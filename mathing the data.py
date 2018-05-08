@@ -10,15 +10,13 @@ import matplotlib.pyplot as plt
 import os
 from scipy import signal
 from numba import jit
-import multiprocessing as mp
-import time as t
 
-v_ranges = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20]
 
 path = r"C:\Users\Jack\Documents\Uni\GDP\Picoscope\Low Gear\36.01V, 0.48A, 2.67V\36.01V, 0.48A, 2.67V_01.txt"
 
 out_path="Low Gear.txt"
 out_file = None
+
 #@jit
 def do_all(folder_list):
     """does all of the results in a folder. folder_list needs be a list of 
@@ -219,22 +217,6 @@ def stats(values):
     out = out[np.nonzero(out)]
     return np.append(np.percentile(out, [0, 25, 50, 75, 100]), np.std(out)/np.sqrt(len(out)))
 
-# =============================================================================
-# def down_sample(data, max_p=500000, times=False):
-#     """Plots the data, but down-sampled to avoid crashing pyplot"""
-#     pos, values = data    
-#     d = 1
-#     while len(values)/d > max_p:
-#         d+=1
-#     #values = values[d*int(len(values)/d)]
-#     length = d*int(len(values)/d)
-#     if times is False:
-#         pos = np.linspace(0, length)[:-1]
-#     else:
-#         pos = np.average(pos.reshape((length/d, d)))
-#     values = np.average(values.reshape((length/d, d)))
-#     plt.plot(pos, values)
-# =============================================================================
 
 def dec_plot(data, start=0, end=None, p=500000, use_times=False):
     """decimates and plots the data between start and end, limited to p data points"""
@@ -289,167 +271,6 @@ def moving_level_shift(data, w_length=100000, threshold=10000, plot=False, us=Tr
         plt.plot(t_out, w_out)
     return t_out, w_out
 
-def moving_level_shift_mp(data, r_thresh=2, w_length=100000, threshold=10000, plot=False, us=None):
-    """does the level_shift on a limited window that moves"""
-    len_out = len(np.transpose(data)[1])-w_length
-    #outs = np.zeros((len_out, 3))
-    outs = np.zeros((4, 0))
-    chunk_size = 1000
-    c = 0
-    counts = np.arange(0, len_out)
-    gen_args = [data, r_thresh, w_length, threshold, us]
-    while c < len_out-chunk_size*4:
-        #print(c)
-        q1, s1 = mp.Pipe(False)
-        q2, s2 = mp.Pipe(False)
-        q3, s3 = mp.Pipe(False)
-        q4, s4 = mp.Pipe(False)
-        chunks = counts[0:chunk_size*4].reshape((4, chunk_size))
-        p1 = mp.Process(target=m_worker, args=(s1, [chunks[0]] + gen_args))
-        p2 = mp.Process(target=m_worker, args=(s2, [chunks[1]] + gen_args))
-        p3 = mp.Process(target=m_worker, args=(s3, [chunks[2]] + gen_args))
-        p4 = mp.Process(target=m_worker, args=(s4, [chunks[3]] + gen_args))
-        p1.start()
-        p2.start()
-        p3.start()
-        p4.start()
-        p1.join()
-        p2.join()
-        p3.join()
-        p4.join()
-        outs = np.stack((outs, q1.recv()))
-        outs = np.stack((outs, q2.recv()))
-        outs = np.stack((outs, q3.recv()))
-        outs = np.stack((outs, q4.recv()))
-        
-        c += chunks
-    return outs
-
-class m_worker(mp.Process):
-    def __init__(self, pipe, args):
-        mp.Process.__init__(self)
-        self.counts = args[0]
-        self.data = args[1]
-        self.r_thresh = args[2]
-        self.w_length = args[3]
-        self.threshold = args[4]
-        self.us = args[5]
-        self.pipe = pipe
-        
-        def run(self):
-            counts = self.counts
-            data = self.data
-            r_thresh = self.r_thresh
-            w_length = self.w_length
-            threshold = self.threshold
-            us = self.us
-            outs = np.zeros((len(counts), 4))
-            n = 0
-            for c in counts:
-                #print(c)
-                outs[n, 0] = data[c, 0]
-                outs[n,1] = rms(data[c:c+w_length, 0])
-                if outs[n, 1] > r_thresh:
-                    res = level_shift(data[c:c+w_length, :], threshold=threshold, plot=False, us=us)
-                    outs[n, 2] = np.average(res[1])
-                    outs[n, 3] = res[-1]
-            self.pipe.send(outs)
-        
-        def exit(self):
-            self.exitFlag=True
-            self.terminate()
-        
-
-# =============================================================================
-# def m_worker(args):
-#     """multi-processing-friendly worker function for moving_level_shift"""
-#     counts, data, r_thresh, w_length, threshold, us = args
-#     outs = np.zeros((len(counts), 4))
-#     n = 0
-#     for c in counts:
-#         #print(c)
-#         outs[n, 0] = data[c, 0]
-#         outs[n,1] = rms(data[c:c+w_length, 0])
-#         if outs[n, 1] > r_thresh:
-#             res = level_shift(data[c:c+w_length, :], threshold=threshold, plot=False, us=us)
-#             outs[n, 2] = np.average(res[1])
-#             outs[n, 3] = res[-1]
-#         #print(outs)
-#     print(outs)
-#     #exit(outs)
-# =============================================================================
-
-# =============================================================================
-# def moving_level_shift_mp(data, r_thresh=2, w_length=100000, threshold=10000, plot=False, us=None):
-#     """does the level_shift on a limited window that moves"""
-#     len_out = len(np.transpose(data)[1])-w_length
-#     outs = np.zeros((len_out, 3))
-#     q1, s1 = mp.Pipe(False)
-#     q2, s2 = mp.Pipe(False)
-#     q3, s3 = mp.Pipe(False)
-#     q4, s4 = mp.Pipe(False)
-#     o_que = mp.Queue()
-#     print("open pipes")
-#     p1 = mp.Process(target=m_worker, args=(data, q1, o_que, r_thresh, w_length, threshold, us, plot,))
-#     p2 = mp.Process(target=m_worker, args=(data, q2, o_que, r_thresh, w_length, threshold, us, plot,))
-#     p3 = mp.Process(target=m_worker, args=(data, q3, o_que, r_thresh, w_length, threshold, us, plot,))
-#     p4 = mp.Process(target=m_worker, args=(data, q4, o_que, r_thresh, w_length, threshold, us, plot,))
-#     print("made processes")
-#     p1.start()
-#     p2.start()
-#     p3.start()
-#     p4.start()
-#     print("started processes")
-#     q1.close()
-#     q2.close()
-#     q3.close()
-#     q4.close()
-#     outs = np.zeros((4, 0))
-#     chunk_size = 1000
-#     c = 0
-#     counts = np.arange(0, len_out)
-#     while c < len_out-chunk_size*4:
-#         #print(c)
-#         chunks = counts[0:chunk_size*4].reshape((4, chunk_size))
-#         s1.send(chunks[0])
-#         #time.sleep(0.1)
-#         s2.send(chunks[1])
-#         #time.sleep(0.1)
-#         s3.send(chunks[2])
-#         #time.sleep(0.1)
-#         s4.send(chunks[3])
-#         #time.sleep(0.1)
-#         o = 0
-#         print("processing")
-#         while o < 4:
-#             if o_que.empty() is False:
-#                 outs = np.stack((outs, o_que.get()))
-#                 o+=1
-#         c += chunks
-#     p1.terminate()
-#     p2.terminate()
-#     p3.terminate()
-#     p4.terminate()
-#     return outs
-# 
-# def m_worker(data, c_que, o_que, r_thresh=2, w_length=10000, threshold=True, us=None, plot=False):
-#     """multi-processing-friendly worker function for moving_level_shift"""
-#     q1, s1 =c_que
-#     s1.close()
-#     counts = c_que.recv()
-#     outs = np.zeros((len(counts), 4))
-#     n = 0
-#     for c in counts:
-#         #print(c)
-#         outs[n, 0] = data[c, 0]
-#         outs[n,1] = rms(data[c:c+w_length, 0])
-#         if outs[n, 1] > r_thresh:
-#             res = level_shift(data[c:c+w_length, :], threshold=threshold, plot=False, us=us)
-#             outs[n, 2] = np.average(res[1])
-#             outs[n, 3] = res[-1]
-#         #print(outs)
-#     o_que.put(outs)
-# =============================================================================
 
 def moving_rms(data, w_length=10000):
     """plots the moving rms of the data"""
